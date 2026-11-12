@@ -1,0 +1,65 @@
+services:
+  # Relational Database (PostgreSQL)
+  db:
+    image: postgres:16-alpine
+    container_name: conceptbridge_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-conceptbridge}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d conceptbridge"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # In-Memory Cache (Redis)
+  redis:
+    image: redis:7-alpine
+    container_name: conceptbridge_redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  # FastAPI Backend Service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../Dockerfile.backend
+    container_name: conceptbridge_backend
+    environment:
+      PROJECT_NAME: "ConceptBridge AI"
+      VERSION: "1.0.0"
+      API_V1_STR: "/api"
+      ENVIRONMENT: "production"
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-conceptbridge}
+      SECRET_KEY: ${SECRET_KEY:-conceptbridge-docker-super-secret-key-2026}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-gpt-4o-mini}
+      CORS_ORIGINS: '["http://localhost:3000","http://localhost:5173","http://127.0.0.1:3000"]'
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # React Frontend Service
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ../Dockerfile.frontend
+    container_name: conceptbridge_frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
